@@ -26,6 +26,7 @@ use App\Models\User;
 use App\Models\VacinationCenter;
 use App\Models\VoteForYourCity;
 use App\Models\YogaGuideModel;
+use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Hash;
 use Illuminate\Support\Facades\Auth;
@@ -65,12 +66,12 @@ class ApiController extends Controller
             $optdefault = new Otp();
             $optdefault->user_id = $registration->id;
             $optdefault->status = 'n';
-            $optdefault->otp = '123456';
+            $optdefault->otp = '1234';
             $optdefault->save();
 
             return response()->json([
                 'result' => true,
-                'message' => ('Registration successfully'),
+                'message' => ('Fill Profile Information.'),
                 'data' => [
                     'user_id' => $registration->id,
                     '_token' => $registration->createToken('tokens')->plainTextToken,
@@ -96,7 +97,7 @@ class ApiController extends Controller
         // Validate Request
         request()->validate([
             'mobile' => 'required | numeric | digits:10 | starts_with: 6,7,8,9',
-            // 'otp' => 'required | numeric | digits:6'
+            // 'otp' => 'required | numeric | digits:4'
 
         ], [
 
@@ -130,34 +131,6 @@ class ApiController extends Controller
                 "_token" => $user->createToken('tokens')->plainTextToken
             ]
         ]);
-
-        // $otp = Otp::where('user_id', $user->id)->where('otp', $request->otp)
-        //     ->where('status', 'n')->first();
-        // if (empty($otp)) {
-        //     return response()->json([
-        //         'error' => ('OTP is not match.')
-        //     ]);
-        // }
-
-        // if (Auth::loginUsingId(1)) {
-        //     // $otp->status = "y";
-        //     // $otp->save();
-
-        //     $token = $user->createToken('auth_token')->plainTextToken;
-        //     return response()->json([
-        //         'result' => true,
-        //         'message' => 'Login Successfull',
-        //         'data' => [
-        //             'user_id' => $user->id,
-        //             'otp' => null,
-        //             'mobile' => $user
-        //         ]
-        //     ]);
-        // } else {
-        //     return response()->json([
-        //         'message' => ('Login details are not valid.')
-        //     ]);
-        // }
     }
 
     public function signOut()
@@ -168,8 +141,131 @@ class ApiController extends Controller
             'message' => ('logout.')
         ]);
     }
+    public function otpverify(Request $request)
+    {
+
+        $otp = Otp::where([['user_id', $request->id], ['otp', $request->otp], ['status', 'n']])->first();
+   
+        if (empty($otp)) {
+            return response()->json([
+                'error' => ('OTP is not match.')
+            ]);
+        }
+
+        if (Auth::loginUsingId(1)) {
+            $otp->status = "y";
+            $otp->save();
+
+            $token = $user->createToken('auth_token')->plainTextToken;
+            return response()->json([
+                'result' => true,
+                'message' => 'Login Successfull',
+                'data' => [
+                    'user_id' => $user->id,
+                    'otp' => null,
+                    'mobile' => $user
+                ]
+            ]);
+        } else {
+            return response()->json([
+                'message' => ('Login details are not valid.')
+            ]);
+        }
+        // 60 sec otp in valid
+        $user = User::where('mobile', $request->mobile)->first();
+
+        if ($user == null) {
+
+            return response()->json([
+                'result' => false,
+                'message' => 'Number is not match. Please try again',
+                'data' => []
+            ]);
+        } else {
+
+            $otp = Otp::where([['status', 'n'], ['user_id', $user->id]])->whereDate('created_at', Carbon::today())->get();
+            if ($otp) {
+                foreach ($otp as $data) {
+                    $emitted = Carbon::parse($data->created_at);
+                    $diff = Carbon::now()->diffInSeconds($emitted);
+
+
+                    if ($diff < 60) {
+
+                        return response()->json([
+                            'result' => true,
+                            'message' => 'otp Fatch successful',
+                            'data' => [
+                                'user_id' => $user->id,
+                                'otp' => $data->otp,
+                                'mobile' => $user->mobile
+                            ]
+                        ]);
+                    } else {
+
+                        return response()->json([
+                            'result' => true,
+                            'message' => 'otp expire. please try again',
+                            'data' => []
+                        ]);
+                    }
+                }
+            } else {
+
+                return response()->json([
+                    'result' => true,
+                    'message' => 'otp expire. please try again',
+                    'data' => []
+                ]);
+            }
+        }
+        return response()->json([
+            'result' => true,
+            'message' => 'otp expire. please try again',
+            'data' => []
+        ]);
+    }
 
     public function editProfile(Request $request)
+    {
+        // Id, Name, Email ,Address  ,Date of Birth
+        request()->validate([
+            'id' => 'required | numeric',
+            'name' => 'required',
+            'email' => 'required',
+            'address' => 'required',
+            'dob' => 'required'
+        ], [
+
+            'id.required' => 'id is required',
+            'name.required' => 'Name is required',
+            'email.required' => 'Email is required',
+            'address.required' => 'Address is required',
+            'dob.required' => 'Dob is required',
+        ]);
+        $user = User::where('id', $request->id)->update(['name' => $request->name, 'email' => $request->email, 'address' => $request->address, 'dob' => date("Y-m-d", strtotime($request->dob))]);
+        if ($user == 1) {
+            $user = User::where('id', $request->id)->first();
+            return response()->json([
+                'result' => true,
+                'message' => 'Profile Updated Successfully',
+                'data' => [
+                    "user_id" => $user->id,
+                    "name" => $user->name,
+                    "email" => $user->email,
+                    "address" => $user->address,
+                    "dob" => date("d-m-Y", strtotime($user->dob)),
+                ]
+            ]);
+        } else {
+            return response()->json([
+                'result' => false,
+                'message' => 'Profile was not updated. Please try again',
+                'data' => []
+            ]);
+        }
+    }
+    public function addprofile(Request $request)
     {
         // Id, Name, Email ,Address  ,Date of Birth
         request()->validate([

@@ -23,6 +23,7 @@ Route::controller(ApiController::class)->group(function () {
     Route::post('registration', 'registration')->name('registration');
     Route::post('login', 'Login')->name('login');
     Route::get('logout', 'signOut');
+    Route::post('otpverify', 'otpverify')->name('otpverify');
 
     // ---------auth here---
     Route::group(['middleware' => 'auth:sanctum'], function () {
